@@ -1,0 +1,39 @@
+KISS implementation of SQL completion for Vim:
+
+First you have to connect to a database. Examples:
+
+  MySQL:
+  call tovl#ft#sql#Connect('mysql',{'host':'127.0.0.1','database':'DATABASE', 'user':'USER', 'password' : 'PASSWORT'})
+
+  SQLITE:
+  call tovl#ft#sql#Connect('mysql',{'database':'filepath'})
+
+  Postgresql (see code)
+
+A connection only initializes b:db_conn which is a Vim object providing
+functions for querying the database.
+
+Setup mappings by calling this function:
+  call vim_addon_sql#UI()
+
+In non visual mode the query start / end is determined by either ; or empty lines.
+In visual mode the selection will be executed
+
+Execution is done by command line tools (psql, mysql, sqlite(3))
+The result of those queries is parsed by Vim to fill alias aware completion.
+
+Example:
+
+1)
+  SELECT *, CURSOR FROM table1, table2
+  Now CURSOR will only contain fields found in either table1 or table2
+
+2)
+  SELECT *, a.CURSOR FROM table1 as a, table2
+  Now the completion will only contain fields of table1
+
+Expect some minor bugs - however this it works quite nicely in practise.
+
+camel case like completion is also supported. eg d_u -> db_users
+
+If you have any questions contact me.
