@@ -157,7 +157,6 @@ function! vim_addon_sql#Complete(findstart, base)
     else
 
       let s:additional_regex = ""
-      let s:base = a:base
       let patterns = vim_addon_completion#AdditionalCompletionMatchPatterns(a:base
             \ , "vim_dev_plugin_completion_func", {'match_beginning_of_string': 0})
       let s:additional_regex = get(patterns, 'vim_regex', "")
@@ -180,6 +179,7 @@ function! vim_addon_sql#Complete(findstart, base)
         let aliasP = ''
         let base = a:base
       endif
+      let s:base = a:base[len(aliasP):]
 
       if alias == '' && exists('b:db_conn.extraCompletions')
         call b:db_conn.extraCompletions()
