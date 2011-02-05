@@ -52,10 +52,20 @@ function! vim_addon_sql#UI()
   Vnoremap <buffer> <F2> y:echo b:db_conn.query(@")<cr>
 endfunction
 
+let s:error_buf_name = '__SQL_ERROR__'
+
 fun! s:ShowError(err)
-  TScratch 'scratch': '__SQL_ERROR__'
+  exec "TScratch 'scratch':'".s:error_buf_name."'"
   normal ggdG
   call append(line('$'), split(a:err,"\n"))
+endf
+
+fun! s:ClearError(result)
+  let r = bufnr('__SQL_ERROR__')
+  if r > 0
+    exec r.'bw'
+  endif
+  return a:result
 endf
 
 " duplicate code, also found in TOVL {{{1
@@ -152,14 +162,9 @@ function! vim_addon_sql#Complete(findstart, base)
     "findstart = 1 when we need to get the text length
     if a:findstart == 1
         let [bc,ac] = vim_addon_sql#SplitCurrentLineAtCursor()
-        return len(bc)-len(matchstr(bc,'\%(\a\|\.\)*$'))
+        return len(bc)-len(matchstr(bc,'\%(\a\|\.\|_\)*$'))
     "findstart = 0 when we need to return the list of completions
     else
-
-      let s:additional_regex = ""
-      let patterns = vim_addon_completion#AdditionalCompletionMatchPatterns(a:base
-            \ , "vim_dev_plugin_completion_func", {'match_beginning_of_string': 0})
-      let s:additional_regex = get(patterns, 'vim_regex', "")
 
       if !exists('b:db_conn')
         echoe "b:db_conn not set, call vim_addon_sql#Connect(dbType,settings) to setup the connection"
@@ -180,6 +185,12 @@ function! vim_addon_sql#Complete(findstart, base)
         let base = a:base
       endif
       let s:base = a:base[len(aliasP):]
+      let s:additional_regex = ""
+      let patterns = vim_addon_completion#AdditionalCompletionMatchPatterns(s:base
+            \ , "vim_dev_plugin_completion_func", {'match_beginning_of_string': 0})
+      let s:additional_regex = get(patterns, 'vim_regex', "")
+
+
 
       if alias == '' && exists('b:db_conn.extraCompletions')
         call b:db_conn.extraCompletions()
@@ -348,7 +359,7 @@ function! vim_addon_sql#MysqlConn(conn)
 
   function! conn.query(sql)
     try
-      return vim_addon_sql#System(self['cmd']+[self['database']],{'stdin-text': a:sql})
+      return s:ClearError(vim_addon_sql#System(self['cmd']+[self['database']],{'stdin-text': a:sql}))
     catch /.*/
       call s:ShowError(v:exception)
     endtry
@@ -457,7 +468,7 @@ function! vim_addon_sql#PostgresConn(conn)
 
   function! conn.query(sql)
     try
-      return vim_addon_sql#System(self['cmd']+[self['database']],{'stdin-text': a:sql})
+      return s:ClearError(vim_addon_sql#System(self['cmd']+[self['database']],{'stdin-text': a:sql}))
     catch /.*/
       call s:ShowError(v:exception)
     endtry
