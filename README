@@ -5,10 +5,10 @@ KISS implementation of SQL completion for Vim:
 First you have to connect to a database. Examples:
 
   MySQL:
-  call tovl#ft#sql#Connect('mysql',{'host':'127.0.0.1','database':'DATABASE', 'user':'USER', 'password' : 'PASSWORT'})
+  call vim_addon_sql#Connect('mysql',{'host':'127.0.0.1','database':'DATABASE', 'user':'USER', 'password' : 'PASSWORT'})
 
   SQLITE:
-  call tovl#ft#sql#Connect('mysql',{'database':'filepath'})
+  call vim_addon_sql#Connect('mysql',{'database':'filepath'})
 
   Postgresql (see code)
 
@@ -38,5 +38,6 @@ Expect some minor bugs - however this it works quite nicely in practise.
 
 camel case like completion is also supported. eg d_u -> db_users
 
-If you have any questions contact me.
+Also completes MySQL internal functions
 
+If you have any questions contact me.

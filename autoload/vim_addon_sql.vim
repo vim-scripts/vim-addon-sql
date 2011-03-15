@@ -18,6 +18,9 @@
 "
 " Mayb this code could be cleaned up ?
 
+let s:thisDir = expand('<sfile>:h')
+let s:mysqlFunctionsDump = s:thisDir.'/mysql-functions.dump'
+
 " retuns the text
 " a command is separated from other commands either
 " by empty lines or by ; (at the end of line)
@@ -310,8 +313,19 @@ function! vim_addon_sql#MysqlConn(conn)
   endif
 
   fun! conn.extraCompletions()
-    " TODO add mysql function names
-    return []
+    " TODO add Postgresql function names
+    if !exists('self["functions"]')
+      let self['functions'] = eval(readfile(s:mysqlFunctionsDump)[0])
+    endif
+    for [d,v] in items(self['functions'])
+      if s:Match(d)
+        let args = d.'('. v.args .')'
+        call complete_add({'word': d
+              \ ,'menu': args
+              \ ,'info': args."\n".v.description
+              \ ,'dup': 1})
+      endif
+    endfor
   endf
 
   function! conn.invalidateSchema()
@@ -369,6 +383,32 @@ function! vim_addon_sql#MysqlConn(conn)
   return conn
 endfunction
 
+
+fun! vim_addon_sql#ExtractMysqlFunctionsFromInfoFile(path)
+  " mysql source contains Docs/mysql.info
+  " Thus func extracts info about all functions
+  exec 'sp '.fnameescape(a:path)
+  normal gg
+  let functions = {}
+  while search('^   \*  \`\S\+(','W')
+    exec 'normal v/^   \*  \`\S\+(\|^\S/-1'."\<cr>y"
+    let c = split(@","\n")
+    let header = ''
+    while c[0] !~ '^\s*$'
+      let header .= c[0]
+      let c = c[1:]
+    endwhile
+    let header = substitute(header,'\s\+',' ','g')[4:]
+    for i in split(header, "', \\`")
+      let r = matchlist(i, '\([^(]\+\)(\([^)]*\)')
+      if len(r) < 2
+        echoe '>> '.string(i)
+      endif
+      let functions[r[1]] = {'args': r[2], 'description':join(c[1:],"\n")}
+    endfor
+  endwhile
+  call writefile([string(functions)], s:mysqlFunctionsDump)
+endf
 
 " postgres implementation {{{1
 function! vim_addon_sql#PostgresConn(conn)
