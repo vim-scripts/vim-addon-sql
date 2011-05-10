@@ -3,15 +3,22 @@ KISS implementation of SQL completion for Vim:
 First you have to connect to a database. Examples:
 
   MySQL:
-  call tovl#ft#sql#Connect('mysql',{'host':'127.0.0.1','database':'DATABASE', 'user':'USER', 'password' : 'PASSWORT'})
+  call vim_addon_sql#Connect('mysql',{'host':'127.0.0.1','database':'DATABASE', 'user':'USER', 'password' : 'PASSWORT'})
 
   SQLITE:
-  call tovl#ft#sql#Connect('mysql',{'database':'filepath'})
+  call vim_addon_sql#Connect('sqlite',{'database':'filepath'})
 
   Postgresql (see code)
 
+  Firebird (see code)
+
 A connection only initializes b:db_conn which is a Vim object providing
 functions for querying the database.
+
+For each query the executable (psql,isql,mysql,sqlite3) is run once.
+Thus there is no support for transactions yet.
+However it should be easy to add an implementation utilizing python or rubies
+database modules.
 
 Setup mappings by calling this function:
   call vim_addon_sql#UI()

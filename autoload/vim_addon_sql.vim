@@ -18,6 +18,13 @@
 "
 " Mayb this code could be cleaned up ?
 
+" vam#DefineAndBind('s:config','g:vim_addon_sql','{}')
+if !exists('g:vim_addon_sql') | let g:vim_addon_sql = {} | endif | let s:c = g:vim_addon_sql
+let s:c['isql'] = get(s:c,'isql','isql')
+let s:c['mysql'] = get(s:c,'mysql','mysql')
+let s:c['psql'] = get(s:c,'psql','psql')
+let s:c['sqlite3'] = get(s:c,'sqlite3','sqlite3')
+
 let s:thisDir = expand('<sfile>:h')
 let s:mysqlFunctionsDump = s:thisDir.'/mysql-functions.dump'
 
@@ -51,8 +58,8 @@ fun! vim_addon_sql#RunAndShow(sql)
 endf
 
 function! vim_addon_sql#UI()
-  Nnoremap <buffer> <F2> :call vim_addon_sql#RunAndShow(join(vim_addon_sql#ThisSQLCommand(),"\n"))<cr>
-  Vnoremap <buffer> <F2> y:echo b:db_conn.query(@")<cr>
+  nnoremap <buffer> <F2> :call vim_addon_sql#RunAndShow(join(vim_addon_sql#ThisSQLCommand(),"\n"))<cr>
+  vnoremap <buffer> <F2> y:echo b:db_conn.query(@")<cr>
 endfunction
 
 let s:error_buf_name = '__SQL_ERROR__'
@@ -174,7 +181,7 @@ function! vim_addon_sql#Complete(findstart, base)
         return []
       endif
       let text = vim_addon_sql#ThisSQLCommand()
-      let words = split(join(text,"\n"),"[\n\r \t'\"()\\[\\],]")
+      let words = split(join(text,"\n"),"[\n\r \t'\"()\\[\\],;]")
       let tables = b:db_conn.tables()
 
       let l = matchlist(a:base,'\([^.]*\)\.\([^.]*\)')
@@ -193,12 +200,6 @@ function! vim_addon_sql#Complete(findstart, base)
             \ , "vim_dev_plugin_completion_func", {'match_beginning_of_string': 0})
       let s:additional_regex = get(patterns, 'vim_regex', "")
 
-
-
-      if alias == '' && exists('b:db_conn.extraCompletions')
-        call b:db_conn.extraCompletions()
-      endif
-
       let tr = b:db_conn['regex']['table']
       let pat = '\zs\('.tr.'\)\s\+\cas\C\s\+\('.tr.'\)\ze' 
       let pat2 = b:db_conn['regex']['table_from_match']
@@ -211,10 +212,37 @@ function! vim_addon_sql#Complete(findstart, base)
       endfor
 
       let [bc,ac] = vim_addon_sql#SplitCurrentLineAtCursor()
-      " add table completion
-      " don't add table completion if cursor is located after a SELECT
-      " note that something like SELECT id, (SELECT .. FROM WHERE) ... could be valid
-      if alias == '' && !(bc =~ '\cSELECT\C[^()]*$' && !bc =~ 'FROM.*$')
+
+      " before AS or after SELECT ... FROM, INSERT INTO .. CREATE / DROP / ALTER TABLE only table names will be shown
+      let tablesOnly =  (bc =~ '\c\%(FROM[^(]*\s\+\|JOIN\s\+\|INTO\s\+\|TABLE\s\+\)\C$' && bc !~ '\cWHERE' ) || ac =~ '^\s*as\>'
+
+      if ! tablesOnly
+        " field completion
+        let table = get(aliases, alias,'')
+        if alias != '' && table == ''
+          let noAliasMatchWarning = ' ! alias not defined or table not found'
+        else
+          let noAliasMatchWarning = ''
+        endif
+
+        if table == ''
+          let usedTables = vl#lib#listdict#list#Intersection(tables, words)
+        else
+          let usedTables = [table]
+        endif
+        let  g:usedTables = usedTables
+        let fields = []
+        for table in usedTables
+          for f in b:db_conn['fields'](table)
+            if s:Match(f)
+              call complete_add({'word' : aliasP.f, 'abbr' : f, 'menu' : 'field of '.table.noAliasMatchWarning, 'dup': 1})
+            endif
+          endfor
+          call complete_check()
+        endfor
+      endif
+
+      if alias == '' && !(bc !~ '\cFROM' && ac =~ '\cFROM')
         for t in tables
           if s:Match(t)
             call complete_add({'word' : t, 'menu' : 'a table'})
@@ -222,34 +250,10 @@ function! vim_addon_sql#Complete(findstart, base)
         endfor
       endif
 
-      " before AS or after SELECT ... FROM, INSERT INTO .. CREATE / DROP / ALTER TABLE only table names will be shown
-      if (bc =~ '\c\%(FROM[^(]*\s\+\|JOIN\s\+\|INTO\s\+\|TABLE\s\+\)\C$' && bc !~ '\cWHERE' ) || ac =~ '^\s*as\>'
-        return []
+      if alias == '' && exists('b:db_conn.extraCompletions')
+        call b:db_conn.extraCompletions()
       endif
 
-      " field completion
-      let table = get(aliases, alias,'')
-      if alias != '' && table == ''
-        let noAliasMatchWarning = ' ! alias not defined or table not found'
-      else
-        let noAliasMatchWarning = ''
-      endif
-
-      if table == ''
-        let usedTables = vl#lib#listdict#list#Intersection(tables, words)
-      else
-        let usedTables = [table]
-      endif
-      let  g:usedTables = usedTables
-      let fields = []
-      for table in usedTables
-        for f in b:db_conn['fields'](table)
-          if s:Match(f)
-            call complete_add({'word' : aliasP.f, 'abbr' : f, 'menu' : 'field of '.table.noAliasMatchWarning })
-          endif
-        endfor
-        call complete_check()|
-      endfor
       return []
     endif
 endfunction
@@ -293,7 +297,7 @@ function! vim_addon_sql#MysqlConn(conn)
     \ , 'table_from_match' :'^`\?\zs[^`]*\ze`\?$' 
     \ }
   if ! has_key(conn,'cmd')
-    let cmd=['mysql']
+    let cmd=[s:c.mysql]
     if has_key(conn, 'host')
       call add(cmd,'-h') | call add(cmd,conn['host'])
     endif
@@ -320,7 +324,7 @@ function! vim_addon_sql#MysqlConn(conn)
     for [d,v] in items(self['functions'])
       if s:Match(d)
         let args = d.'('. v.args .')'
-        call complete_add({'word': d
+        call complete_add({'word': d.(v.args == '' ? '' : '(')
               \ ,'menu': args
               \ ,'info': args."\n".v.description
               \ ,'dup': 1})
@@ -418,7 +422,7 @@ function! vim_addon_sql#PostgresConn(conn)
     \ , 'table_from_match' :'^`\?\zs[^`]*\ze`\?$' 
     \ }
   if ! has_key(conn,'cmd')
-    let cmd=['psql']
+    let cmd=[s:c.psql]
     if has_key(conn, 'host')
       call add(cmd,'-h') | call add(cmd,conn['host'])
     endif
@@ -528,11 +532,11 @@ function! vim_addon_sql#SqliteConn(conn)
     \ , 'table_from_match' :'^`\?\zs[^`]*\ze`\?$' 
     \ }
   if ! has_key(conn,'database')
-    throw 'sqlite connection requires key filepath!'
+    throw 'sqlite connection requires key database!'
   endif
 
   if ! has_key(conn,'cmd')
-    let conn['cmd']=['sqlite3']
+    let conn['cmd']=[s:c.sqlite3]
   endif
 
   fun! conn.extraCompletions()
@@ -594,5 +598,85 @@ function! vim_addon_sql#SqliteConn(conn)
 
   return conn
 endfunction
+
+" vim:fdm=marker
+" firebird implementation {{{1
+" conn must be {'database:'..', ['user':'..','password':.., 'cmd':'isql']}
+function! vim_addon_sql#FirebirdConn(conn)
+  let conn = a:conn
+  let conn['executable'] = get(conn,'executable', s:c.isql)
+  let conn['username'] = get(conn,'username','SYSDBA')
+  let conn['password'] = get(conn,'password','masterkey')
+  let conn['regex'] = {
+    \ 'table' :'\%(`[^`]\+`\|[^ \t`]\+\)' 
+    \ , 'table_from_match' :'^`\?\zs[^`]*\ze`\?$' 
+    \ }
+  if ! has_key(conn,'database')
+    throw 'firebird connection requires key database!'
+  endif
+
+  if !has_key(conn,'cmd')
+    let conn['cmd']=[conn.executable,'-u',conn['username'],'-p',conn['password']]
+  endif
+
+  fun! conn.extraCompletions()
+    " TODO add firebird function names etc
+    return []
+  endf
+
+  function conn.create()
+    let command = "CREATE DATABASE '". self.database ."' page_size 8192\n"
+	      \ ."user '". self.username ."' password '". self.password ."';"
+    call vim_addon_sql#System([self['executable']],{'stdin-text': command.';;'})
+  endfunction
+
+  function! conn.invalidateSchema()
+    let self['schema'] = {'tables' : {}}
+  endfunction
+  call conn['invalidateSchema']()
+
+  function! conn.col(col, output)
+    return vim_addon_sql#MapIf( split(a:output,"\n")
+            \ , "Val =~ '^\\s*".a:col.": '", "matchstr(Val, ".string('^\s*'.a:col.': \zs.*').")")
+  endfunction
+
+  function! conn.tables()
+    " no caching yet
+    " TODO: handle spaces and quoting ?
+    return split(self.query('show tables'),'[ \t\r\n]\+')
+  endfun
+
+  function! conn.loadFieldsOfTables(tables)
+    for table in a:tables
+      let fields = []
+      let lines = split(self.query('show table '.table),"\n")
+      for l in lines
+	" : denotes trigger or constraints section
+	if l =~ ':$' | break | endif
+        call add(fields, matchstr( l, '^\zs\S*\ze') )
+      endfor
+      let self['schema']['tables'][table] = { 'fields' : fields }
+    endfor
+  endfunction
+
+  function! conn.fields(table)
+    if !exists('self["schema"]["tables"]['.string(a:table).']["fields"]')
+      call self.loadFieldsOfTables([a:table])
+    endif
+    return self["schema"]["tables"][a:table]['fields']
+  endfunction
+
+  function! conn.query(sql)
+    try
+      return vim_addon_sql#System(self['cmd']+[self['database']],{'stdin-text': a:sql.';;'})
+    catch /.*/
+      call s:ShowError(v:exception)
+    endtry
+  endfun
+
+  return conn
+endfunction
+
+"echo c.query('CREATE DATABASE')
 
 " vim:fdm=marker
